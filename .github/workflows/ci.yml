@@ -1,0 +1,39 @@
+# Runs the test suite on every push and pull request.
+#
+# The tests need no API key and no running Qdrant - the store falls back to
+# in-memory when QDRANT_URL is unset, and the tested code paths (chunking,
+# routing, auth) make no network calls. That is deliberate: CI that needs
+# secrets is CI that breaks for anyone who forks the repo.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  docker:
+    # Build the image too. A Dockerfile that is never built in CI is a
+    # Dockerfile that is broken and nobody knows yet.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t grounded:ci .
