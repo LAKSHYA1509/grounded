@@ -62,7 +62,7 @@ Ask yourself, and be honest about whether you can answer without looking:
 
 ### 5. `app/auth.py` — 8 minutes
 
-Short, and worth reading properly because it's the only thing between a public URL and an OpenAI bill.
+Short, and worth reading properly because it's the only thing between a public URL and a drained model quota.
 
 Two ideas: **proportionality** — there is exactly one thing to decide here, so a shared secret is the right control and user accounts would be more code for no more security. And **constant-time comparison** — why `==` on a secret leaks it one byte at a time through timing, even though the attack is impractical at this scale.
 
