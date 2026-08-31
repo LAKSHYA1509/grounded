@@ -13,8 +13,9 @@ touching the graph. A route handler that contains business logic is a route
 handler you can only test through HTTP.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
+from app.auth import require_api_key
 from app.chunking import chunk_text
 from app.graph import ask
 from app.models import (
@@ -28,18 +29,30 @@ from app.store import add_documents, count
 
 app = FastAPI(
     title="grounded",
-    description="A RAG service that won't answer without sources.",
-    version="0.1.0",
+    description=(
+        "A RAG service that refuses to answer without sources. "
+        "Set the X-API-Key header if the deployment requires one."
+    ),
+    version="0.2.0",
 )
 
 
 @app.get("/health")
 def health():
-    """Liveness plus one useful fact: is anything actually indexed?"""
+    """
+    Liveness plus one useful fact: is anything actually indexed?
+
+    Deliberately unauthenticated — a hosting platform has to be able to probe
+    it, and it reveals nothing but a count.
+    """
     return {"status": "ok", "chunks_indexed": count()}
 
 
-@app.post("/ingest", response_model=IngestResponse)
+@app.post(
+    "/ingest",
+    response_model=IngestResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def ingest(req: IngestRequest):
     """
     Chunk, embed, index.
@@ -58,7 +71,11 @@ def ingest(req: IngestRequest):
     return IngestResponse(source=req.source, chunks_added=added)
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post(
+    "/ask",
+    response_model=AskResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def ask_question(req: AskRequest):
     """
     Run the graph.
