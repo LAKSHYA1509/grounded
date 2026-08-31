@@ -1,0 +1,13 @@
+# Optional. The app runs fine with just `uvicorn` — Chroma is in-process and
+# needs no server. This exists so the service can be brought up the same way
+# everywhere, which matters the moment more than one person runs it.
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist the index outside the container so a rebuild doesn't wipe it.
+      - ./.chroma:/app/.chroma
