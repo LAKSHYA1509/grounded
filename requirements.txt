@@ -1,14 +1,14 @@
 # Pinned deliberately. Unpinned AI dependencies are the fastest way to have a
 # repo that worked last week and doesn't today - these libraries move fast.
 #
-# These exact versions are verified working on Python 3.13 (Windows).
+# These exact versions are verified working on Python 3.13.
 #
 # NOTE ON THE PINS: an earlier attempt pinned older versions, which resolved
 # to a chromadb that constrained numpy below the first release with cp313
 # wheels. pip then tried to BUILD numpy from source, needed a C compiler,
-# and failed. If you move to a newer Python and installation breaks the same
-# way, that is the thing to look for - a transitive constraint holding a
-# compiled package below its first wheel for your interpreter.
+# and failed. If installation ever breaks that way on a newer Python, that
+# is the thing to look for - a transitive constraint holding a compiled
+# package below its first wheel for your interpreter.
 
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
@@ -19,8 +19,12 @@ langgraph==1.2.11
 langchain==1.3.18
 langchain-core==1.6.1
 langchain-openai==1.6.0
-langchain-chroma==1.1.0
 langchain-text-splitters==1.1.2
+
+# Vector store. A thin HTTP client - the embedded alternative pulled a
+# Kubernetes client and an ONNX runtime we never used (422 MB -> 187 MB).
+langchain-qdrant==1.1.0
+qdrant-client==1.19.0
 
 pytest==9.1.1
 httpx==0.28.1
