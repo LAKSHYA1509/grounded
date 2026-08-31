@@ -1,3 +1,14 @@
+---
+title: grounded
+emoji: 🔎
+colorFrom: green
+colorTo: gray
+sdk: gradio
+sdk_version: 6.26.0
+app_file: space_app.py
+pinned: false
+---
+
 # grounded
 
 [![CI](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml/badge.svg)](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml)
@@ -5,6 +16,8 @@
 A document Q&A service that refuses to answer without sources — and checks its own retrieval before it answers.
 
 FastAPI · LangGraph · Qdrant · Gemini. Containerised, CI on every push.
+
+> The YAML block above is Hugging Face Spaces metadata for the live demo. `app_file` points at `space_app.py` so it doesn't collide with the `app/` package.
 
 ---
 
@@ -111,7 +124,9 @@ pytest
 
 ## Deploying
 
-The image reads `$PORT` from the environment, so the same build runs on Koyeb, Render, or Cloud Run — all of which inject their own — without modification. Hardcoding a port is what makes an image host-specific.
+**Live demo:** a Gradio front-end (`space_app.py`) runs on Hugging Face Spaces. It imports the same graph, chunker and store the API uses — nothing is reimplemented. That it took ~60 lines is the payoff from keeping the route handlers free of business logic: a completely different front-end was additive rather than a refactor.
+
+**As a container**, the image reads `$PORT` from the environment, so the same build runs on Render or Cloud Run — both inject their own — without modification. Hardcoding a port is what makes an image host-specific.
 
 ```bash
 docker build -t grounded .

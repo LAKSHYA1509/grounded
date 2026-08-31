@@ -34,3 +34,7 @@ qdrant-client==1.19.0
 
 pytest==9.1.1
 httpx==0.28.1
+
+# UI for the Hugging Face Spaces deployment. Not needed to run the API -
+# space_app.py is a thin front-end over the same code paths.
+gradio==6.26.0
