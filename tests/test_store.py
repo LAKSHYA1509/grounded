@@ -46,12 +46,14 @@ def in_memory_store(monkeypatch):
     """
     monkeypatch.setattr(
         store, "settings",
-        replace(settings, qdrant_url="", embedding_dim=FAKE_DIM,
-                collection="test_grounded"),
+        replace(settings, qdrant_url="", collection="test_grounded"),
     )
     monkeypatch.setattr(
         store, "get_embeddings", lambda: DeterministicFakeEmbedding(size=FAKE_DIM)
     )
+    # store asks llm.embedding_dimension() rather than reading config, so
+    # that is the seam to substitute here.
+    monkeypatch.setattr(store, "embedding_dimension", lambda: FAKE_DIM)
     store.reset_store()
     yield
     store.reset_store()

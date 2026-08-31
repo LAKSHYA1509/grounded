@@ -3,7 +3,7 @@ Tests for the API key gate.
 
 WHY THIS MATTERS MORE THAN IT LOOKS
 -----------------------------------
-This is the only thing standing between a public URL and an OpenAI bill.
+This is the only thing standing between a public URL and a drained quota.
 A bug here has a direct financial consequence, and it fails silently — an
 auth check that accidentally lets everything through looks exactly like an
 auth check that works, right up until the invoice.

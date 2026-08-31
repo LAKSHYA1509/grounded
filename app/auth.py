@@ -3,7 +3,7 @@ Access control.
 
 WHY THIS FILE EXISTS
 --------------------
-The deployed instance is public and holds an OpenAI API key. /ask makes at
+The deployed instance is public and holds a model provider API key. /ask makes at
 least two paid model calls per request. An unauthenticated endpoint that
 spends money on behalf of whoever finds the URL is not a demo — it's an open
 wallet, and the bill arrives before you notice.

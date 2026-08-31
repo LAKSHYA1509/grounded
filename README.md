@@ -1,22 +1,10 @@
----
-title: grounded
-emoji: 🔎
-colorFrom: green
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # grounded
 
 [![CI](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml/badge.svg)](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml)
 
 A document Q&A service that refuses to answer without sources — and checks its own retrieval before it answers.
 
-FastAPI · LangGraph · Qdrant. Containerised, deployed on Hugging Face Spaces.
-
-> The YAML block at the top of this file is Hugging Face Spaces metadata. It tells the platform this is a Docker Space and which port to probe.
+FastAPI · LangGraph · Qdrant · Gemini. Containerised, CI on every push.
 
 ---
 
@@ -77,7 +65,9 @@ State is persisted after every node by a checkpointer, keyed on `thread_id`.
 
 ## Running it
 
-Requires Python 3.11+ and an OpenAI API key. **No vector database to install** — with `QDRANT_URL` unset the store runs in-memory, so a fresh clone works with nothing but a key.
+Requires Python 3.11+ and one model API key. The default provider is Google Gemini, whose free tier needs no credit card — get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+**No vector database to install**: with `QDRANT_URL` unset the store runs in-memory, so a fresh clone works with nothing but that key.
 
 ```bash
 git clone https://github.com/LAKSHYA1509/grounded.git
@@ -88,7 +78,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
 
-cp .env.example .env               # then put your OpenAI key in .env
+cp .env.example .env               # then put your Gemini key in .env
 
 uvicorn app.main:app --reload --port 8000
 ```
@@ -115,13 +105,13 @@ The response carries the answer, the source chunks it used, how many retrieval a
 pytest
 ```
 
-24 tests, no API key and no running database required. They cover chunking, the routing logic, the auth gate, and the store against a real in-memory Qdrant.
+24 tests, no model key and no running database required. They cover chunking, the routing logic, the auth gate, and the store against a real in-memory Qdrant.
 
 ---
 
 ## Deploying
 
-The image reads `$PORT` from the environment, so the same build runs on Hugging Face Spaces (7860), Render, and Cloud Run (which inject their own) without modification. Hardcoding a port is what makes an image host-specific.
+The image reads `$PORT` from the environment, so the same build runs on Koyeb, Render, or Cloud Run — all of which inject their own — without modification. Hardcoding a port is what makes an image host-specific.
 
 ```bash
 docker build -t grounded .
@@ -130,7 +120,7 @@ docker run -p 8000:7860 --env-file .env grounded
 
 For a real deployment set `QDRANT_URL` to a Qdrant Cloud cluster — a container filesystem is ephemeral, so an embedded store would be wiped on every redeploy.
 
-**Set `API_KEY` on any public deployment.** `/ask` makes paid model calls; an open endpoint holding an OpenAI key is an open wallet. With it set, every route except `/health` requires the `X-API-Key` header.
+**Set `API_KEY` on any public deployment.** `/ask` spends model quota; an open endpoint holding a provider key is an open wallet. With it set, every route except `/health` requires the `X-API-Key` header.
 
 ---
 
@@ -150,7 +140,9 @@ For a real deployment set `QDRANT_URL` to a Qdrant Cloud cluster — a container
 
 **Why the response returns sources.** An answer you cannot verify is an answer you cannot trust. Returning the chunks lets a caller check whether the model actually used the documents.
 
-**Why the provider is a config string.** `CHAT_MODEL=openai:gpt-4o-mini` can become `anthropic:...` with no code change. Depend on the interface, not the vendor.
+**Why the provider is a config string.** This is not a hypothetical benefit. The project started on OpenAI and moved to Google Gemini because Gemini's free tier needs no credit card. That migration was two lines of `.env` and one dependency — no application code changed at all, because both chat and embeddings go through provider-agnostic factories. Depend on the interface, not the vendor.
+
+**Why the vector dimension is measured, not configured.** Qdrant needs the vector size to create a collection and rejects anything else, so a wrong number breaks every insert. Putting it in config means config can disagree with reality — swap the embedding model, forget the dimension, and the failure surfaces later somewhere else as a confusing database rejection. So `llm.embedding_dimension()` asks the model instead. When a value can be derived from the system, deriving it beats configuring it: configuration is for choices, and this is a fact.
 
 **Why a shared secret rather than user accounts.** There is exactly one thing to decide — may you call this at all — and no per-user data to authorise between. Real accounts would be more code, more attack surface, and no more security. Choosing the control that is proportionate to the risk is the point.
 
@@ -179,11 +171,11 @@ app/
   graph.py      the LangGraph: state, nodes, router, cycle   ← start here
   store.py      Qdrant: index and similarity search
   chunking.py   splitting documents, and why the splits matter
-  llm.py        model access in one place, provider-agnostic
+  llm.py        model access + measured vector dimension, provider-agnostic
   auth.py       the API key gate, and why it's proportionate
   models.py     request/response schemas
   config.py     all configuration, read from the environment
-tests/          24 tests — no API key, no database required
+tests/          24 tests — no model key, no database required
 .github/
   workflows/ci.yml   pytest + docker build on every push
 ```

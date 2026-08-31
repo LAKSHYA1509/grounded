@@ -27,17 +27,24 @@ load_dotenv()  # reads .env into the environment, if the file exists
 @dataclass(frozen=True)
 class Settings:
     # --- provider ---------------------------------------------------------
-    # A provider:model string. Swapping this is the whole point of using a
+    # provider:model strings. Swapping these is the whole point of using a
     # standard interface instead of a vendor SDK directly.
-    #   "openai:gpt-4o-mini"
-    #   "anthropic:claude-haiku-4-5-20251001"
-    #   "google_genai:gemini-2.0-flash"
-    chat_model: str = os.getenv("CHAT_MODEL", "openai:gpt-4o-mini")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    #
+    #   google_genai:gemini-2.5-flash-lite   <- default; free tier, no card
+    #   openai:gpt-4o-mini
+    #   anthropic:claude-haiku-4-5-20251001
+    #
+    # Google is the default because its free tier needs no credit card and
+    # does not expire. Nothing in the application code knows or cares.
+    chat_model: str = os.getenv("CHAT_MODEL", "google_genai:gemini-2.5-flash-lite")
+    embedding_model: str = os.getenv(
+        "EMBEDDING_MODEL", "google_genai:gemini-embedding-001"
+    )
 
-    # Must match the embedding model's output size, or Qdrant rejects the
-    # vectors. text-embedding-3-small -> 1536. text-embedding-3-large -> 3072.
-    embedding_dim: int = int(os.getenv("EMBEDDING_DIM", "1536"))
+    # Vector size. Leave at 0 to measure it from the model at startup, which
+    # is the safe default - see llm.embedding_dimension() for why measuring
+    # beats configuring here. Set it only to skip that one startup call.
+    embedding_dim: int = int(os.getenv("EMBEDDING_DIM", "0"))
 
     # --- chunking ---------------------------------------------------------
     # 800 characters is a reasonable default: big enough to hold a complete
@@ -64,9 +71,9 @@ class Settings:
     # --- access control ---------------------------------------------------
     # If set, every request must carry it as the X-API-Key header.
     #
-    # This exists because the deployed instance is public and holds an
-    # OpenAI key. Without a gate, anyone who finds the URL can spend your
-    # money on /ask. An unauthenticated endpoint that calls a paid API is
+    # This exists because the deployed instance is public and holds a model
+    # provider key. Without a gate, anyone who finds the URL can spend your
+    # quota on /ask. An unauthenticated endpoint that calls a metered API is
     # not an open demo, it's an open wallet.
     #
     # Empty means open — which is fine locally and NOT fine in production.

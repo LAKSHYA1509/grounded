@@ -51,7 +51,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
 from app.config import settings
-from app.llm import get_embeddings
+from app.llm import embedding_dimension, get_embeddings
 
 _store: Optional[QdrantVectorStore] = None
 
@@ -64,8 +64,8 @@ def _make_client() -> QdrantClient:
       - not set    -> in-memory, no server, no setup
 
     The in-memory mode is not a toy. It means `pytest` runs with no
-    infrastructure and `uvicorn` works on a fresh clone with nothing but an
-    OpenAI key. Anything that makes the tests need a running server is
+    infrastructure and `uvicorn` works on a fresh clone with nothing but a
+    model provider key. Anything that makes the tests need a running server is
     something that will eventually stop the tests being run at all.
     """
     if settings.qdrant_url:
@@ -81,10 +81,14 @@ def _ensure_collection(client: QdrantClient) -> None:
     """
     Create the collection if it isn't there.
 
-    NOTE ON THE VECTOR SIZE: it must match the embedding model exactly.
-    text-embedding-3-small produces 1536 dimensions. Qdrant will reject
-    vectors of any other length, which is a good thing — it turns a silent
-    "why are my results garbage" into a loud error at insert time.
+    NOTE ON THE VECTOR SIZE: it must match the embedding model exactly, and
+    Qdrant rejects vectors of any other length. That is a good thing — it
+    turns a silent "why are my results garbage" into a loud error at insert
+    time.
+
+    The size comes from `embedding_dimension()`, which asks the model rather
+    than reading config, so the two can never disagree. See that function
+    for the reasoning.
 
     This is also why changing EMBEDDING_MODEL means re-indexing everything:
     a different model produces vectors in a different space, so similarity
@@ -97,7 +101,7 @@ def _ensure_collection(client: QdrantClient) -> None:
     client.create_collection(
         collection_name=settings.collection,
         vectors_config=VectorParams(
-            size=settings.embedding_dim,
+            size=embedding_dimension(),
             distance=Distance.COSINE,
         ),
     )
