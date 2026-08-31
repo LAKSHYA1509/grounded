@@ -1,8 +1,22 @@
+---
+title: grounded
+emoji: 🔎
+colorFrom: green
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # grounded
+
+[![CI](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml/badge.svg)](https://github.com/LAKSHYA1509/grounded/actions/workflows/ci.yml)
 
 A document Q&A service that refuses to answer without sources — and checks its own retrieval before it answers.
 
-Built with FastAPI, LangGraph and Chroma.
+FastAPI · LangGraph · Qdrant. Containerised, deployed on Hugging Face Spaces.
+
+> The YAML block at the top of this file is Hugging Face Spaces metadata. It tells the platform this is a Docker Space and which port to probe.
 
 ---
 
@@ -28,7 +42,7 @@ That backward edge is why this is a graph and not a chain.
                         │
                         ▼
               ┌──────────────────┐
-        ┌────▶│    retrieve      │  embed question, pull top-k chunks
+        ┌────▶│    retrieve      │  embed question, pull top-k from Qdrant
         │     └────────┬─────────┘
         │              │
         │              ▼
@@ -63,10 +77,10 @@ State is persisted after every node by a checkpointer, keyed on `thread_id`.
 
 ## Running it
 
-Requires Python 3.11+ and an OpenAI API key.
+Requires Python 3.11+ and an OpenAI API key. **No vector database to install** — with `QDRANT_URL` unset the store runs in-memory, so a fresh clone works with nothing but a key.
 
 ```bash
-git clone https://github.com/Lakshya1509/grounded.git
+git clone https://github.com/LAKSHYA1509/grounded.git
 cd grounded
 
 python -m venv .venv
@@ -74,9 +88,9 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
 
-cp .env.example .env               # then put your key in .env
+cp .env.example .env               # then put your OpenAI key in .env
 
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
 Open http://localhost:8000/docs for the interactive API.
@@ -84,18 +98,16 @@ Open http://localhost:8000/docs for the interactive API.
 ### Try it
 
 ```bash
-# index a document
 curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
   -d '{"text":"Refunds are processed within 5 working days. Payouts above INR 5000 require manual review.","source":"policy.md"}'
 
-# ask about it
 curl -X POST http://localhost:8000/ask \
   -H "Content-Type: application/json" \
   -d '{"question":"How long do refunds take?"}'
 ```
 
-The response includes the answer, the source chunks it used, how many retrieval attempts it took, and how the context was graded.
+The response carries the answer, the source chunks it used, how many retrieval attempts it took, and how the context was graded.
 
 ### Tests
 
@@ -103,7 +115,22 @@ The response includes the answer, the source chunks it used, how many retrieval 
 pytest
 ```
 
-The tests cover chunking and the routing logic — the two pure-logic pieces. They need no API key and run in under a second.
+24 tests, no API key and no running database required. They cover chunking, the routing logic, the auth gate, and the store against a real in-memory Qdrant.
+
+---
+
+## Deploying
+
+The image reads `$PORT` from the environment, so the same build runs on Hugging Face Spaces (7860), Render, and Cloud Run (which inject their own) without modification. Hardcoding a port is what makes an image host-specific.
+
+```bash
+docker build -t grounded .
+docker run -p 8000:7860 --env-file .env grounded
+```
+
+For a real deployment set `QDRANT_URL` to a Qdrant Cloud cluster — a container filesystem is ephemeral, so an embedded store would be wiped on every redeploy.
+
+**Set `API_KEY` on any public deployment.** `/ask` makes paid model calls; an open endpoint holding an OpenAI key is an open wallet. With it set, every route except `/health` requires the `X-API-Key` header.
 
 ---
 
@@ -115,13 +142,17 @@ The tests cover chunking and the routing logic — the two pure-logic pieces. Th
 
 **Why `k` doubles on retry.** Retrying with the same `k` retrieves the same chunks and grades them the same way — an infinite loop that also achieves nothing. Each retry has to change something, and widening the net is the cheapest useful change.
 
-**Why attempts are capped at 2.** Every cycle in a graph needs a termination guarantee. Some questions simply cannot be answered from the indexed documents, and the system must be able to conclude that rather than loop. When attempts run out we generate anyway, and the prompt makes the model say "I don't know" rather than invent something.
+**Why attempts are capped at 2.** Every cycle in a graph needs a termination guarantee. Some questions cannot be answered from the indexed documents, and the system must be able to conclude that rather than loop. When attempts run out we generate anyway, and the prompt makes the model say "I don't know" rather than invent something.
+
+**Why Qdrant instead of an embedded store.** This began on Chroma, which was right while it ran only on a laptop and wrong the moment it was containerised — a container filesystem is ephemeral, so the index would be wiped on every redeploy. Storage that must outlive the process has to live outside it. The second reason was a surprise: Chroma pulled ~235 MB of dependencies the project never used (a Kubernetes client, an ONNX inference runtime, gRPC, OpenTelemetry) because it *can* also embed locally and run distributed. Moving to a thin HTTP client cut the install from 422 MB to 187 MB.
 
 **Why 800-character chunks with 120 overlap.** Big enough to hold a complete thought, small enough that retrieval stays precise. The overlap matters more than it looks: without it, an idea spanning a chunk boundary is cut in half and no single chunk contains it — and no later stage can recover information that chunking destroyed.
 
 **Why the response returns sources.** An answer you cannot verify is an answer you cannot trust. Returning the chunks lets a caller check whether the model actually used the documents.
 
 **Why the provider is a config string.** `CHAT_MODEL=openai:gpt-4o-mini` can become `anthropic:...` with no code change. Depend on the interface, not the vendor.
+
+**Why a shared secret rather than user accounts.** There is exactly one thing to decide — may you call this at all — and no per-user data to authorise between. Real accounts would be more code, more attack surface, and no more security. Choosing the control that is proportionate to the risk is the point.
 
 ---
 
@@ -132,10 +163,11 @@ Written down deliberately. A system whose failure modes you haven't named is one
 - **Ingestion is synchronous.** Embedding a large document blocks the HTTP request. The correct shape is accept → enqueue → return a job id, with a worker doing the embedding. Fine for pasted text, wrong for a 300-page PDF.
 - **Semantic search only.** Embeddings are fuzzy and miss exact tokens — error codes, product IDs, names. Hybrid search (vector + BM25 keyword) would fix this and is the most valuable single upgrade here.
 - **No re-ranking.** We take the top `k` by cosine similarity and use them in that order. Retrieving wider and re-ranking with a cross-encoder would put the genuinely best chunk first, which matters because context position affects the answer.
-- **The grader is the same model as the generator.** Cheap and convenient, but a model is not a neutral judge of context it is about to use. A smaller dedicated grader, or a non-model heuristic on similarity scores, would be more honest.
-- **`InMemorySaver` loses state on restart.** Deliberate, to keep setup to one command. Swapping in the SQLite or Postgres checkpointer is an interface-level change, not a rewrite.
+- **The grader is the same model as the generator.** Cheap and convenient, but a model is not a neutral judge of context it is about to use. A smaller dedicated grader, or a heuristic on similarity scores, would be more honest.
+- **`InMemorySaver` loses conversation state on restart.** Deliberate, to keep setup to one command. Swapping in the SQLite or Postgres checkpointer is an interface-level change, not a rewrite.
 - **No evaluation set.** There is no way to tell whether a prompt change made things better or worse. For anything real this is the first thing I would add: a fixed list of questions with known-good answers, run on every change.
-- **Single-tenant.** The tenant filter would have to be pushed *into* the vector search, not applied to its results — filtering afterwards silently returns fewer chunks than requested and risks leaking across tenants. Noted in `app/store.py`.
+- **No rate limiting.** The API key gates *who* can call, not *how much*. A leaked key is still an uncapped bill.
+- **Single-tenant.** The tenant filter would have to be pushed *into* the Qdrant query, not applied to its results — filtering afterwards silently returns fewer chunks than requested and risks leaking across tenants. Noted in `app/store.py`.
 
 ---
 
@@ -145,12 +177,13 @@ Written down deliberately. A system whose failure modes you haven't named is one
 app/
   main.py       FastAPI routes — thin, no business logic
   graph.py      the LangGraph: state, nodes, router, cycle   ← start here
-  store.py      vector store: index and similarity search
+  store.py      Qdrant: index and similarity search
   chunking.py   splitting documents, and why the splits matter
   llm.py        model access in one place, provider-agnostic
+  auth.py       the API key gate, and why it's proportionate
   models.py     request/response schemas
   config.py     all configuration, read from the environment
-tests/
-  test_chunking.py   pure logic, no API key needed
-  test_routing.py    the cycle's termination guarantee
+tests/          24 tests — no API key, no database required
+.github/
+  workflows/ci.yml   pytest + docker build on every push
 ```

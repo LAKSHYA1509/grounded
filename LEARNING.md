@@ -32,6 +32,8 @@ Ask yourself: *what happens if I set `CHUNK_OVERLAP=0`? What specifically breaks
 
 What a vector store is and what it's doing.
 
+Read the top docstring carefully — it explains why this moved off Chroma. Two reasons, and the second one is the interesting one: a container filesystem is ephemeral (so an embedded index dies on every redeploy), and Chroma was dragging in 235 MB of dependencies we never used. That's a deployment constraint forcing an architecture change, which is a real story rather than a preference.
+
 The mechanism: text becomes a vector, similar meanings land near each other, and "find relevant chunks" becomes "find nearby vectors." Nearness is cosine similarity — the *angle* between vectors, not the distance, because we care about direction (meaning) and not magnitude (roughly, length).
 
 Read the long comment in `search()` twice. The multi-tenancy point in it is the single strongest thing you can say about this project in an interview, because it comes from work you actually do — and it's a genuine bug class, not a style opinion.
@@ -58,17 +60,39 @@ Ask yourself, and be honest about whether you can answer without looking:
 3. Why does `grade()` explicitly say "do NOT answer the question"?
 4. What does `thread_id` actually do?
 
-### 5. `app/models.py` and `app/main.py` — 10 minutes
+### 5. `app/auth.py` — 8 minutes
+
+Short, and worth reading properly because it's the only thing between a public URL and an OpenAI bill.
+
+Two ideas: **proportionality** — there is exactly one thing to decide here, so a shared secret is the right control and user accounts would be more code for no more security. And **constant-time comparison** — why `==` on a secret leaks it one byte at a time through timing, even though the attack is impractical at this scale.
+
+Ask yourself: *why does `/health` stay open when the gate is on?*
+
+### 6. `app/models.py` and `app/main.py` — 10 minutes
 
 The HTTP boundary. Notice how thin `main.py` is: routes parse input, call one function, shape the response. No logic.
 
 Ask yourself: *why is that separation worth having?* Hint — how would you test the graph if the logic lived in the route handler?
 
-### 6. `tests/` — 10 minutes
+### 7. `tests/` — 15 minutes
 
-Two files, and notice what they test: chunking and routing. Both are pure functions — no model, no network, no API key.
+Four files, 24 tests, and none of them need an API key or a running database.
 
-That isn't laziness about the rest. It's the design working: **the riskiest part of the system (the cycle) is also the cheapest part to test**, because it was deliberately kept free of I/O. That's a real engineering argument and a good thing to be able to make.
+- `test_chunking.py` and `test_routing.py` — pure functions, no I/O at all.
+- `test_auth.py` — the gate, including the case people skip: that it's genuinely *off* when unconfigured.
+- `test_store.py` — a **real** in-memory Qdrant, not a mock. Real client, real collection creation, real similarity search; only the process boundary is missing.
+
+Notice why `test_store.py` is even possible: embeddings come from one function, so a test can swap in a deterministic fake. If model access were scattered through the codebase there'd be nothing to substitute. That's the practical argument for isolating I/O — not purity, but that it leaves you exactly one seam to test through.
+
+And note that **the riskiest part of the system (the retry cycle) is also the cheapest part to test**, because it was deliberately kept free of I/O. That's a real engineering argument worth being able to make.
+
+### 8. `.github/workflows/ci.yml` — 5 minutes
+
+Runs `pytest` and builds the Docker image on every push.
+
+Why build the image in CI when nothing deploys from there? Because a Dockerfile that is never built is a Dockerfile that is broken and nobody knows yet. The same reasoning as running tests: the point is to find out early rather than at deploy time.
+
+Why no secrets in CI? Because CI that needs secrets breaks for anyone who forks the repo. The tests were designed to need none.
 
 ---
 
@@ -81,6 +105,7 @@ Things for you to add. Each one is a real improvement, not busywork:
 - **Async ingestion.** Accept, enqueue, return a job id. This is the shape you already know from your OTA bundle pipeline.
 - **A tiny eval set.** Ten questions with known-good answers, and a script that runs them. This is the thing that most impresses people and almost nobody does.
 - **The SQLite checkpointer** instead of `InMemorySaver`, so threads survive a restart.
+- **Rate limiting.** The API key controls *who* can call, not *how much*. A leaked key is still an uncapped bill.
 - **Streaming** on `/ask`, so the answer appears token by token instead of after a five-second wait.
 
 Pick one or two. Finishing two properly beats starting six.
@@ -102,6 +127,7 @@ These are the ones where I'd rather you ask than guess. Genuinely — asking any
 ## Before it goes public
 
 - [ ] You can explain every file without opening this document
+- [ ] `API_KEY` is set on the deployment (not just locally) — `/ask` spends money
 - [ ] `.env` is **not** committed — check `git status` before every push
 - [ ] You've run it once and asked it a real question
 - [ ] `pytest` passes
