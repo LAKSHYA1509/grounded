@@ -120,7 +120,7 @@ def grade(state: RAGState) -> dict:
         "does not."
     )
 
-    reply = model.invoke(prompt).content.strip().upper()
+    reply = _text(model.invoke(prompt)).strip().upper()
     verdict = "sufficient" if "SUFFICIENT" in reply and "INSUFFICIENT" not in reply else "insufficient"
     return {"grade": verdict}
 
@@ -153,7 +153,37 @@ def generate(state: RAGState) -> dict:
         "ANSWER:"
     )
 
-    return {"answer": model.invoke(prompt).content.strip()}
+    return {"answer": _text(model.invoke(prompt)).strip()}
+
+
+def _text(message) -> str:
+    """
+    Get plain text out of a model reply.
+
+    WHY THIS IS NOT JUST `.content`
+    -------------------------------
+    `.content` used to always be a string. On newer multimodal models it can
+    be a *list of content blocks* instead - each block a dict like
+    {"type": "text", "text": "..."} - because a reply may carry reasoning,
+    images or tool calls alongside the text.
+
+    So `.content.strip()` works on one provider and throws
+    AttributeError: 'list' object has no attribute 'strip' on another. That
+    is exactly the kind of breakage a provider-agnostic layer is supposed to
+    absorb, so it gets absorbed here once rather than at every call site.
+    """
+    c = message.content
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        parts = []
+        for block in c:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts)
+    return str(c)
 
 
 def _format_docs(docs: List[Document]) -> str:

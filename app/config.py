@@ -30,13 +30,13 @@ class Settings:
     # provider:model strings. Swapping these is the whole point of using a
     # standard interface instead of a vendor SDK directly.
     #
-    #   google_genai:gemini-2.5-flash-lite   <- default; free tier, no card
+    #   google_genai:gemini-flash-lite-latest  <- default; free tier, no card
     #   openai:gpt-4o-mini
     #   anthropic:claude-haiku-4-5-20251001
     #
     # Google is the default because its free tier needs no credit card and
     # does not expire. Nothing in the application code knows or cares.
-    chat_model: str = os.getenv("CHAT_MODEL", "google_genai:gemini-2.5-flash-lite")
+    chat_model: str = os.getenv("CHAT_MODEL", "google_genai:gemini-flash-lite-latest")
     embedding_model: str = os.getenv(
         "EMBEDDING_MODEL", "google_genai:gemini-embedding-001"
     )
