@@ -26,6 +26,10 @@ langchain-text-splitters==1.1.2
 # langchain-openai` then CHAT_MODEL=openai:gpt-4o-mini. No code changes.
 langchain-google-genai==4.3.7
 
+# Local embeddings - runs a quantised ONNX model on CPU, no API key and no
+# network call. Removes a hosted dependency from the demo path entirely.
+fastembed==0.8.0
+
 # Vector store. A thin HTTP client - the embedded alternative pulled a
 # Kubernetes client and an ONNX runtime we never used (422 MB -> 187 MB).
 langchain-qdrant==1.1.0

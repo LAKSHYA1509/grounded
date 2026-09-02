@@ -21,11 +21,44 @@ You don't switch. You configure.
 """
 
 from functools import lru_cache
+from typing import List
 
 from langchain.chat_models import init_chat_model
 from langchain.embeddings import init_embeddings
+from langchain_core.embeddings import Embeddings
 
 from app.config import settings
+
+
+class LocalEmbeddings(Embeddings):
+    """
+    Embeddings that run on this machine, with no API key and no network call.
+
+    WHY THIS EXISTS
+    ---------------
+    Every hosted embedding API is a dependency you carry into a live demo: a
+    key that can be wrong, a rate limit that can be hit, a network that can
+    drop. For embeddings specifically that dependency buys very little -
+    the model is small, the work is cheap, and it runs fine on a CPU.
+
+    fastembed runs a quantised ONNX model locally. First use downloads
+    ~130 MB once and caches it; after that it is offline and instant.
+
+    Implementing LangChain's Embeddings interface here rather than pulling in
+    langchain_community is deliberate: the interface is two methods, and the
+    package is large. Depend on the interface, not the package.
+    """
+
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
+        from fastembed import TextEmbedding
+
+        self._model = TextEmbedding(model_name=model_name)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [v.tolist() for v in self._model.embed(texts)]
+
+    def embed_query(self, text: str) -> List[float]:
+        return next(iter(self._model.embed([text]))).tolist()
 
 # NOTE ON VERSION DRIFT
 # ---------------------
@@ -62,8 +95,14 @@ def get_embeddings():
 
     So changing EMBEDDING_MODEL means re-indexing everything. That's a real
     operational gotcha and a good thing to mention out loud.
+
+    A "local:" prefix runs the model on this machine instead of calling an
+    API - see LocalEmbeddings for why that is often the better trade.
     """
-    return init_embeddings(settings.embedding_model)
+    spec = settings.embedding_model
+    if spec.startswith("local:"):
+        return LocalEmbeddings(spec.split(":", 1)[1] or "BAAI/bge-small-en-v1.5")
+    return init_embeddings(spec)
 
 
 @lru_cache(maxsize=1)
